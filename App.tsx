@@ -7,7 +7,7 @@ import { Button } from './components/Button';
 import { AiGenerator } from './components/AiGenerator';
 import { MemeText, MemeSticker, MemeLayer, Tab, HistoryState } from './types';
 import { generateMagicCaptions, editMemeImage } from './services/geminiService';
-import { Type, Wand2, Edit, Plus, Trash2, ArrowLeft, AlignLeft, AlignCenter, AlignRight, Undo, Redo, RotateCw, Type as FontIcon, X, Sparkles, ChevronUp, ChevronDown, Palette, LayoutTemplate, Smile, Sticker as StickerIcon, Search, Shapes, Grid, AlertCircle, Check, Maximize, Move, RefreshCw, Clock, Flame, Star, Loader2, Circle, Zap, Heart, Flag, Coffee, Car, Dumbbell, Lightbulb, RotateCcw, Scaling, Download, Copy, Share, FileImage, Share2, Image as ImageIcon, Monitor } from 'lucide-react';
+import { Type, Wand2, Edit, Plus, Trash2, ArrowLeft, AlignLeft, AlignCenter, AlignRight, Undo, Redo, RotateCw, Type as FontIcon, X, Sparkles, ChevronUp, ChevronDown, Palette, LayoutTemplate, Smile, Sticker as StickerIcon, Search, Shapes, Grid, AlertCircle, Check, Maximize, Move, RefreshCw, Clock, Flame, Star, Loader2, Circle, Zap, Heart, Flag, Coffee, Car, Dumbbell, Lightbulb, RotateCcw, Scaling, Download, Copy, Share, FileImage, Share2, Image as ImageIcon, Monitor, Settings, Key, Save } from 'lucide-react';
 
 const FONTS = [
   { name: 'Oswald', label: 'Oswald (Default)' },
@@ -138,9 +138,11 @@ const App: React.FC = () => {
   const [showMagicModal, setShowMagicModal] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [suggestedCaptions, setSuggestedCaptions] = useState<string[]>([]);
+  const [captionTopic, setCaptionTopic] = useState("");
   
   const [showEditModal, setShowEditModal] = useState(false);
   const [editPrompt, setEditPrompt] = useState("");
+  const [editModel, setEditModel] = useState("gemini-2.5-flash-image");
   const [isGeneratingEdit, setIsGeneratingEdit] = useState(false);
   const [generatedEditImage, setGeneratedEditImage] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -155,10 +157,27 @@ const App: React.FC = () => {
   const [exportQuality, setExportQuality] = useState(0.9);
   const [exportDimensions, setExportDimensions] = useState({ width: 0, height: 0 });
   const [copySuccess, setCopySuccess] = useState(false);
+  
+  // Settings Modal State
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
 
   // History
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Load API Key from localStorage on mount
+  useEffect(() => {
+    const storedKey = localStorage.getItem('USER_API_KEY');
+    if (storedKey) {
+      setApiKeyInput(storedKey);
+    }
+  }, []);
+
+  const handleSaveApiKey = () => {
+    localStorage.setItem('USER_API_KEY', apiKeyInput.trim());
+    setShowSettingsModal(false);
+  };
 
   const saveHistory = useCallback((newLayers: MemeLayer[], newImage?: string | null, newFilter?: string) => {
     const stateToSave: HistoryState = {
@@ -180,6 +199,7 @@ const App: React.FC = () => {
     setHistory([{ layers: [], image: base64, filter: 'none' }]);
     setHistoryIndex(0);
     setSuggestedCaptions([]);
+    setCaptionTopic("");
     setActiveTab(Tab.CAPTION);
     setSelectedId(null);
     setView('EDITOR');
@@ -290,8 +310,14 @@ const App: React.FC = () => {
       saveHistory(newLayers);
   };
 
-  const resetAllLayers = () => {
-      // Reset without confirm for immediate action
+  // Updated with Confirmation Modal
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  
+  const handleResetAllClick = () => {
+      if (layers.length > 0) setShowResetConfirm(true);
+  };
+
+  const confirmResetAll = () => {
       const newLayers = layers.map(l => {
           const defaults = { x: 50, y: 50, rotation: 0 };
           if(l.type === 'text') {
@@ -311,6 +337,7 @@ const App: React.FC = () => {
       });
       setLayers(newLayers);
       saveHistory(newLayers);
+      setShowResetConfirm(false);
   };
 
   const moveLayer = (id: string, direction: 'up' | 'down') => {
@@ -448,10 +475,10 @@ const App: React.FC = () => {
     if (!image) return;
     setIsAnalyzing(true);
     try {
-      const captions = await generateMagicCaptions(image);
+      const captions = await generateMagicCaptions(image, captionTopic);
       setSuggestedCaptions(captions);
     } catch (error) {
-      alert("Failed to generate captions.");
+      alert("Failed to generate captions. Ensure your API Key is set.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -463,7 +490,7 @@ const App: React.FC = () => {
     setGeneratedEditImage(null);
     setEditError(null);
     try {
-      const newImage = await editMemeImage(image, editPrompt);
+      const newImage = await editMemeImage(image, editPrompt, editModel);
       setGeneratedEditImage(newImage);
     } catch (error: any) {
       setEditError(error.message || "Failed to edit image.");
@@ -597,8 +624,72 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col pt-6 pb-10 overflow-x-hidden">
-      <Header />
+      <Header onOpenSettings={() => setShowSettingsModal(true)} />
       
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setShowSettingsModal(false)}></div>
+          <div className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl flex flex-col animate-fade-in-up">
+             <div className="flex items-center justify-between p-5 border-b border-neutral-800 bg-neutral-950/50 rounded-t-2xl">
+                <div className="flex items-center gap-3">
+                   <div className="p-2 bg-neutral-800 rounded-lg"><Settings className="w-5 h-5 text-white" /></div>
+                   <h3 className="text-lg font-bold text-white">Settings</h3>
+                </div>
+                <button onClick={() => setShowSettingsModal(false)} className="text-neutral-500 hover:text-white"><X className="w-5 h-5" /></button>
+             </div>
+             
+             <div className="p-6 space-y-6">
+                <div className="space-y-2">
+                   <label className="text-sm font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                      <Key className="w-4 h-4" /> Google Gemini API Key
+                   </label>
+                   <p className="text-xs text-neutral-500">
+                      Enter your own API Key to use the AI features. Your key is stored locally in your browser.
+                   </p>
+                   <div className="relative">
+                      <input 
+                        type="password" 
+                        value={apiKeyInput}
+                        onChange={(e) => setApiKeyInput(e.target.value)}
+                        placeholder="AIzaSy..."
+                        className="w-full bg-black border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white focus:border-indigo-500 outline-none transition-all font-mono"
+                      />
+                   </div>
+                   <p className="text-[10px] text-neutral-600">
+                      Don't have a key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Get one here</a>.
+                   </p>
+                </div>
+             </div>
+
+             <div className="p-5 border-t border-neutral-800 bg-neutral-950/50 rounded-b-2xl flex justify-end gap-3">
+                <Button variant="ghost" onClick={() => setShowSettingsModal(false)}>Cancel</Button>
+                <Button onClick={handleSaveApiKey} className="bg-white text-black hover:bg-neutral-200 border-none">
+                   <Save className="w-4 h-4 mr-2" /> Save Settings
+                </Button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {showResetConfirm && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)}></div>
+              <div className="relative w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl p-6 animate-fade-in-up text-center">
+                  <div className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <RefreshCw className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2">Reset All Layers?</h3>
+                  <p className="text-sm text-neutral-400 mb-6">This will restore the position, size, and rotation of all layers to their default state.</p>
+                  <div className="flex gap-3 justify-center">
+                      <Button variant="ghost" onClick={() => setShowResetConfirm(false)} className="flex-1">Cancel</Button>
+                      <Button variant="secondary" onClick={confirmResetAll} className="flex-1 bg-white text-black hover:bg-neutral-200 border-none">Confirm</Button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Magic Modal */}
       {showMagicModal && (
         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-4">
@@ -615,15 +706,31 @@ const App: React.FC = () => {
                     <button onClick={() => setShowMagicModal(false)} className="text-neutral-500 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-5 overflow-y-auto space-y-5 custom-scrollbar pb-10 md:pb-5">
+                    {/* Topic Input */}
+                    {!isAnalyzing && suggestedCaptions.length === 0 && (
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Topic / Context (Optional)</label>
+                            <input 
+                                type="text" 
+                                value={captionTopic}
+                                onChange={(e) => setCaptionTopic(e.target.value)}
+                                placeholder="e.g. 'Programming', 'Cats', 'Work life'"
+                                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:border-neutral-600 outline-none"
+                            />
+                        </div>
+                    )}
+
                     {suggestedCaptions.length === 0 && !isAnalyzing && (
                         <div className="flex justify-center py-4">
-                            <Button variant="secondary" onClick={handleMagicAnalysis} className="w-full !bg-neutral-900 hover:!bg-neutral-800 !text-white border-neutral-800" icon={<Sparkles className="w-4 h-4" />}>Generate Ideas</Button>
+                            <Button variant="secondary" onClick={handleMagicAnalysis} className="w-full !bg-neutral-900 hover:!bg-neutral-800 !text-white border-neutral-800" icon={<Sparkles className="w-4 h-4" />}>
+                                {captionTopic ? 'Generate with Context' : 'Generate Ideas'}
+                            </Button>
                         </div>
                     )}
                     {isAnalyzing && (
                         <div className="py-8 text-center space-y-3">
                             <div className="animate-spin w-8 h-8 border-2 border-white border-t-transparent rounded-full mx-auto"></div>
-                            <p className="text-xs text-neutral-400 animate-pulse">Analyzing humor potential...</p>
+                            <p className="text-xs text-neutral-400 animate-pulse">Analyzing image & generating humor...</p>
                         </div>
                     )}
                     {suggestedCaptions.length > 0 && !isAnalyzing && (
@@ -631,7 +738,19 @@ const App: React.FC = () => {
                             {suggestedCaptions.map((cap, idx) => (
                                 <button key={idx} onClick={() => { addText(cap); setShowMagicModal(false); }} className="w-full text-left p-3 text-sm text-neutral-200 bg-neutral-800 hover:bg-neutral-700 hover:text-white border border-neutral-700 rounded-xl transition-all">"{cap}"</button>
                             ))}
-                            <div className="pt-4"><Button variant="secondary" onClick={handleMagicAnalysis} className="w-full text-xs" icon={<RotateCw className="w-3 h-3" />}>Regenerate</Button></div>
+                            <div className="pt-4 border-t border-neutral-800 mt-4">
+                                <p className="text-xs text-neutral-500 mb-2">Try again with a new topic?</p>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={captionTopic}
+                                        onChange={(e) => setCaptionTopic(e.target.value)}
+                                        placeholder="New topic..."
+                                        className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:border-neutral-600 outline-none"
+                                    />
+                                    <Button variant="secondary" onClick={handleMagicAnalysis} className="text-xs py-2" icon={<RotateCw className="w-3 h-3" />}>Regen</Button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -673,9 +792,27 @@ const App: React.FC = () => {
                       </div>
                   </div>
                   <div className="p-4 md:p-6 bg-neutral-950 border-t border-neutral-800 flex flex-col gap-4 shrink-0 safe-bottom">
-                      <div className="flex gap-3">
-                          <input type="text" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Describe changes..." className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:border-neutral-600 outline-none" onKeyDown={(e) => e.key === 'Enter' && handleRunAiEdit()} />
-                          <Button variant="primary" onClick={handleRunAiEdit} disabled={!editPrompt.trim() || isGeneratingEdit} className="px-4 md:px-6 bg-white text-black">{isGeneratingEdit ? '...' : 'Generate'}</Button>
+                      <div className="flex gap-3 flex-col md:flex-row">
+                          {/* Model Selector */}
+                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1 shrink-0">
+                              <button 
+                                onClick={() => setEditModel('gemini-2.5-flash-image')}
+                                className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${editModel === 'gemini-2.5-flash-image' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                              >
+                                  Flash (Fast)
+                              </button>
+                              <button 
+                                onClick={() => setEditModel('gemini-3-pro-image-preview')}
+                                className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${editModel === 'gemini-3-pro-image-preview' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                              >
+                                  Pro (HD)
+                              </button>
+                          </div>
+
+                          <div className="flex-1 flex gap-3">
+                             <input type="text" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Describe changes..." className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:border-neutral-600 outline-none" onKeyDown={(e) => e.key === 'Enter' && handleRunAiEdit()} />
+                             <Button variant="primary" onClick={handleRunAiEdit} disabled={!editPrompt.trim() || isGeneratingEdit} className="px-4 md:px-6 bg-white text-black">{isGeneratingEdit ? '...' : 'Generate'}</Button>
+                          </div>
                       </div>
                       {generatedEditImage && (<div className="flex justify-end gap-3 pt-2 border-t border-neutral-800/50"><Button variant="ghost" onClick={() => setGeneratedEditImage(null)} className="text-neutral-400">Discard</Button><Button variant="secondary" onClick={applyAiEdit} className="text-green-500"><Check className="w-4 h-4 mr-2" /> Apply</Button></div>)}
                   </div>
@@ -909,7 +1046,7 @@ const App: React.FC = () => {
                         <h3 className="text-sm font-medium text-neutral-300">Stack</h3>
                         <div className="flex gap-2">
                              {layers.length > 0 && (
-                                <Button variant="ghost" onClick={resetAllLayers} className="!py-1.5 !px-2 text-[10px] text-neutral-500 hover:text-white">Reset All</Button>
+                                <Button variant="ghost" onClick={handleResetAllClick} className="!py-1.5 !px-2 text-[10px] text-neutral-500 hover:text-white">Reset All</Button>
                              )}
                              <Button variant="ghost" onClick={() => setShowMagicModal(true)} className="!py-1.5 !px-3 text-xs border border-neutral-700 bg-neutral-800"><Wand2 className="w-3 h-3 mr-1.5" /> Magic</Button>
                              <Button variant="ghost" onClick={() => addText()} className="!py-1.5 !px-3 text-xs border border-neutral-700 bg-neutral-800"><Plus className="w-3 h-3 mr-1" /> Add Text</Button>

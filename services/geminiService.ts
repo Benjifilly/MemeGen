@@ -1,9 +1,23 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 
-// Ensure API key is present
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// Helper to get the API Key dynamically
+const getApiKey = (): string => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('USER_API_KEY');
+    if (stored && stored.trim().length > 0) return stored;
+  }
+  return process.env.API_KEY || '';
+};
+
+// Helper to get the AI client instance
+const getAiClient = () => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please add your API Key in the Settings menu.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 // Helper to resize image if it's too large (improves API stability)
 const resizeImage = async (base64Str: string, maxWidth = 1024, maxHeight = 1024): Promise<string> => {
@@ -76,12 +90,20 @@ const getBase64Data = (base64String: string) => {
  * Analyzes the image and generate meme captions using Gemini 3 Pro Preview.
  * Uses JSON Schema for structured output.
  */
-export const generateMagicCaptions = async (base64Image: string): Promise<string[]> => {
-  if (!apiKey) throw new Error("API Key missing");
+export const generateMagicCaptions = async (base64Image: string, topic?: string): Promise<string[]> => {
+  const ai = getAiClient();
 
   // Resize for performance
   const optimizedImage = await resizeImage(base64Image, 1024, 1024);
   const { mimeType, data } = getBase64Data(optimizedImage);
+
+  let promptText = "Analyze this image and generate 5 funny, witty, short meme-style captions for it. Make them varied in tone (sarcastic, wholesome, relatable).";
+  
+  if (topic && topic.trim()) {
+      promptText += ` IMPORTANT: The captions MUST be specifically related to the following topic or context: "${topic}".`;
+  }
+
+  promptText += " Return a JSON object with a 'captions' key containing a list of strings.";
 
   try {
     const response = await ai.models.generateContent({
@@ -95,7 +117,7 @@ export const generateMagicCaptions = async (base64Image: string): Promise<string
             },
           },
           {
-            text: "Analyze this image and generate 5 funny, witty, short meme-style captions for it. Make them varied in tone (sarcastic, wholesome, relatable). Return a JSON object with a 'captions' key containing a list of strings."
+            text: promptText
           },
         ],
       },
@@ -127,19 +149,19 @@ export const generateMagicCaptions = async (base64Image: string): Promise<string
 };
 
 /**
- * Edits the image using Gemini 2.5 Flash Image (Direct Image-to-Image).
+ * Edits the image using Gemini 2.5 Flash Image (Direct Image-to-Image) or Gemini 3 Pro Image.
  * This preserves the original image's likeness while applying the edit.
  */
-export const editMemeImage = async (base64Image: string, prompt: string): Promise<string> => {
-    if (!apiKey) throw new Error("API Key missing");
+export const editMemeImage = async (base64Image: string, prompt: string, model: string = 'gemini-2.5-flash-image'): Promise<string> => {
+    const ai = getAiClient();
 
-    // Use 1024x1024 for better quality edits (Flash Image is efficient)
+    // Use 1024x1024 for better quality edits
     const optimizedImage = await resizeImage(base64Image, 1024, 1024);
     const { mimeType, data } = getBase64Data(optimizedImage);
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: model,
             contents: {
                 parts: [
                     {
@@ -149,7 +171,7 @@ export const editMemeImage = async (base64Image: string, prompt: string): Promis
                         },
                     },
                     {
-                        // Just send the prompt directly for best results with Flash Image
+                        // Just send the prompt directly
                         text: prompt,
                     },
                 ],
@@ -192,7 +214,8 @@ export const editMemeImage = async (base64Image: string, prompt: string): Promis
                 msg.includes('blocked') || 
                 msg.includes('quota') || 
                 msg.includes('429') ||
-                msg.includes('exceeded')
+                msg.includes('exceeded') ||
+                msg.includes('settings')
             ) {
                  throw error;
             }
@@ -206,7 +229,7 @@ export const editMemeImage = async (base64Image: string, prompt: string): Promis
  * Generates a high quality image using Imagen 4.0.
  */
 export const generateHighQualityImage = async (prompt: string): Promise<string> => {
-  if (!apiKey) throw new Error("API Key missing");
+  const ai = getAiClient();
 
   try {
     const response = await ai.models.generateImages({
